@@ -18,11 +18,8 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"strings"
-
-	"k8s.io/client-go/rest"
-	cliflag "k8s.io/component-base/cli/flag"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
 	"github.com/koordinator-sh/koordinator/pkg/features"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/audit"
@@ -34,6 +31,9 @@ import (
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/runtimehooks"
 	statesinformerimpl "github.com/koordinator-sh/koordinator/pkg/koordlet/statesinformer/impl"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/util/system"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	cliflag "k8s.io/component-base/cli/flag"
 )
 
 const (
@@ -89,9 +89,13 @@ func (c *Configuration) InitFlags(fs *flag.FlagSet) {
 }
 
 func (c *Configuration) InitKubeConfigForKoordlet(kubeAPIQPS float64, kubeAPIBurst int) error {
-	cfg, err := config.GetConfig()
+	err := SaveKubeConfigFile()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to save kubeconfig file, %v", err)
+	}
+	cfg, err := clientcmd.BuildConfigFromFlags("", "kubeconfig")
+	if err != nil {
+		return fmt.Errorf("failed to build config, %v", err)
 	}
 	cfg.UserAgent = "koordlet"
 	cfg.QPS = float32(kubeAPIQPS)

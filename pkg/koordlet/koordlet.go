@@ -21,6 +21,7 @@ import (
 	"os"
 	"time"
 
+	topologyv1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
 	topologyclientset "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	slov1alpha1 "github.com/koordinator-sh/koordinator/apis/slo/v1alpha1"
 	clientsetbeta1 "github.com/koordinator-sh/koordinator/pkg/client/clientset/versioned"
 	"github.com/koordinator-sh/koordinator/pkg/client/clientset/versioned/typed/scheduling/v1alpha1"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/config"
@@ -43,7 +45,6 @@ import (
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/statesinformer"
 	statesinformerimpl "github.com/koordinator-sh/koordinator/pkg/koordlet/statesinformer/impl"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/util/system"
-	"github.com/koordinator-sh/koordinator/pkg/util"
 )
 
 var (
@@ -54,6 +55,8 @@ var (
 
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
+	_ = slov1alpha1.AddToScheme(scheme)
+	_ = topologyv1alpha1.AddToScheme(scheme)
 }
 
 type Daemon interface {
@@ -73,6 +76,7 @@ type daemon struct {
 }
 
 func NewDaemon(config *config.Configuration) (Daemon, error) {
+	klog.Infoln("18:34")
 	// get node name
 	nodeName := os.Getenv("NODE_NAME")
 	if len(nodeName) == 0 {
@@ -86,35 +90,48 @@ func NewDaemon(config *config.Configuration) (Daemon, error) {
 	klog.Infof("kernel version INFO: %+v", system.HostSystemInfo)
 
 	kubeClient := clientset.NewForConfigOrDie(config.KubeRestConf)
+	klog.Infoln("kubeClient Done")
 	crdClient := clientsetbeta1.NewForConfigOrDie(config.KubeRestConf)
+	klog.Infoln("crdClient Done")
 	topologyClient := topologyclientset.NewForConfigOrDie(config.KubeRestConf)
+	klog.Infoln("topologyClient Done")
 	schedulingClient := v1alpha1.NewForConfigOrDie(config.KubeRestConf)
+	klog.Infoln("schedulingClient Done")
 
 	metricCache, err := metriccache.NewMetricCache(config.MetricCacheConf)
+	klog.Infoln("metricCache Done")
 	if err != nil {
 		return nil, err
 	}
 	predictServer := prediction.NewPeakPredictServer(config.PredictionConf)
+	klog.Infoln("predictServer Done")
 	predictorFactory := prediction.NewPredictorFactory(predictServer, config.PredictionConf.ColdStartDuration, config.PredictionConf.SafetyMarginPercent)
+	klog.Infoln("predictorFactory Done")
 
 	statesInformer := statesinformerimpl.NewStatesInformer(config.StatesInformerConf, kubeClient, crdClient, topologyClient, metricCache, nodeName, schedulingClient, predictorFactory)
+	klog.Infoln("statesInformer Done")
 
 	cgroupDriver := system.GetCgroupDriver()
 	system.SetupCgroupPathFormatter(cgroupDriver)
 
 	collectorService := metricsadvisor.NewMetricAdvisor(config.CollectorConf, statesInformer, metricCache)
+	klog.Infoln("collectorService Done")
 
-	evictVersion, err := util.FindSupportedEvictVersion(kubeClient)
-	if err != nil {
-		return nil, err
-	}
+	evictVersion := "v1"
+	//evictVersion, err := util.FindSupportedEvictVersion(kubeClient)
+	//if err != nil {
+	//	return nil, err
+	//}
+	klog.Infoln("evictVersion Done")
 
 	qosManager := qosmanager.NewQOSManager(config.QOSManagerConf, scheme, kubeClient, crdClient, nodeName, statesInformer, metricCache, config.CollectorConf, evictVersion)
+	klog.Infoln("qosManager Done")
 
 	runtimeHook, err := runtimehooks.NewRuntimeHook(statesInformer, config.RuntimeHookConf, scheme, kubeClient, nodeName)
 	if err != nil {
 		return nil, err
 	}
+	klog.Infoln("runtimeHook Done")
 
 	extensionControllers := []extension.Controller{}
 	for _, initFunc := range extensionControllerInitFuncs {
